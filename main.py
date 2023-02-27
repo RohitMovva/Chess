@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import messagebox
 import io
 import cairosvg
 import os
@@ -44,13 +45,13 @@ class chessPiece(tk.Button):
         self['width'] -= 16
         self['height'] -= 16
         # uncomment for buttons to have a different border when selected
-        # self['borderwidth'] = 8
+        self['borderwidth'] = 8
 
     def unhighlight(self):
         self['width'] = 150
         self['height'] = 150
         # uncomment for buttons to have a different border when selected
-        # self['borderwidth'] = 0
+        self['borderwidth'] = 0
 
     def end(self):
         self.unbind('<Button-1>')
@@ -65,7 +66,7 @@ class chessPiece(tk.Button):
         self['image'] = image
 
     def become_normal(self):
-        self.promoter = False
+        self.promoter = [False, None]
         self['image'] = self.image
 
 
@@ -79,13 +80,14 @@ class chessBoard(tk.Frame):
         counter = 0
         self.turn = True
         self.piece_type_dict = {0: 'r', 1: 'n', 2: 'b', 3: 'q', 4: 'k'}
+        self.value_dict = {'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9, 'k': 0, None: 0}
         self.promote_to_piece = [[], []]
         with os.scandir('pieces/') as pieces:
             for old_piece in pieces:
                 image_data = cairosvg.svg2png(url=cwd + "/pieces/" + old_piece.name)
                 image = Image.open(io.BytesIO(image_data))
                 resized = image.resize((150, 150))
-                piece = ImageTk.PhotoImage(resized)
+                piece = ImageTk.PhotoImage(resized, master=master)
                 if counter > 1:
                     counter = 0
                     step += 1
@@ -107,7 +109,20 @@ class chessBoard(tk.Frame):
 
         self.board = []
         self.highlighted_squares = []
-        tk.Frame.__init__(self, master, bg='blue')
+        tk.Frame.__init__(self, master, bg='black')
+        self.score = None
+        self.player_labels = [[], []]
+        for i in range(0, 2):
+            currframe = tk.Frame(master, height=5, width=50)
+            self.player_labels[i].append(currframe)
+            self.player_labels[i].append(tk.Label(currframe, text=("Player " + str(i+1)), height=5, width=10, bg='black', fg='white'))
+            self.player_labels[i].append(tk.Label(currframe, text="Score: " + str(self.calculate_score(bool(i))), height=5, width=10, bg='black', fg='white'))
+            self.player_labels[i].append(tk.Label(currframe, text="Relative Score: " +
+                    str(self.calculate_score(bool(i))-self.calculate_score(not bool(i))), height=5, width=20, bg='black', fg='white'))
+            # str(self.calculate_score(bool(i))-self.calculate_score(not bool(i))
+        self.player_labels[1][0].grid(row=0, column=0, columnspan=8)
+        for i in range(1, len(self.player_labels[0])):
+            self.player_labels[1][i].grid(row=0, column=i)
         self.grid()
         self.rowconfigure(9, minsize=1)
         self.chessFrame = tk.Frame(self, bg='white')
@@ -140,7 +155,21 @@ class chessBoard(tk.Frame):
                     self.kings.append(self.board[i][j])
                 elif piece_info[1] == 'k' and piece_info[0] == False:
                     self.kings.append(self.board[i][j])
-                self.board[i][j].grid(row=i, column=j)
+                self.board[i][j].grid(row=i+1, column=j, sticky='wnes')
+        self.player_labels[0][0].grid(row=8, column=0, columnspan=8)
+        for i in range(1, len(self.player_labels[0])):
+            self.player_labels[0][i].grid(row=0, column=i)
+        for i in range(0, len(self.player_labels)):
+            self.player_labels[i][2]['text'] = "Score: " + str(self.calculate_score(bool(i)))
+            self.player_labels[i][3]['text'] = "Relative Score: " + str(self.calculate_score(bool(i)) - self.calculate_score(not bool(i)))
+
+    def calculate_score(self, player):
+        score = 0
+        for i in self.board:
+            for j in i:
+                if j.piece_info[0] == player:
+                    score += self.value_dict[j.piece_info[1]]
+        return score
 
     def handle_click(self, square):
         # promote a piece
@@ -151,7 +180,7 @@ class chessBoard(tk.Frame):
             self.past_move[1].remove_piece()
             self.past_move[1].add_piece(square["image"], square.promoter[1])
             for i in self.promoting_options:
-                i['image'] = i.image
+                i.become_normal()
             self.promoting_options = []
             self.switch_board(square)
 
@@ -224,7 +253,7 @@ class chessBoard(tk.Frame):
             switches[1] = 3
         self.board[int(self.turn) * 7][switches[0]].add_piece(temp[0][0], temp[0][1])
         self.board[int(self.turn) * 7][switches[1]].add_piece(temp[1][0], temp[1][1])
-        self.kings[self.turn] = self.board[int(self.turn) * 7][switches[1]]
+        self.kings[self.turn] = self.board[int(self.turn) * 7][switches[0]]
 
     def en_passant(self, square):
         self.past_move[1].remove_piece()
@@ -232,24 +261,34 @@ class chessBoard(tk.Frame):
         self.selected_square.remove_piece()
 
     def switch_board(self, square):
-        if square.piece_info[1] == 'k' and square.piece_info[0] == True:
+        if square.piece_info[1] == 'k' and square.piece_info[0]:
             self.kings[0] = square
-        elif square.piece_info[1] == 'k' and square.piece_info[0] == False:
+        elif square.piece_info[1] == 'k' and not square.piece_info[0]:
             self.kings[1] = square
         self.turn = not self.turn
         self.selected_square = None
-        self.check_for_end()
+
+        self.player_labels[0][0].grid(row=8*int(self.turn), column=0, columnspan=8)
+        self.player_labels[1][0].grid(row=8*int(not self.turn), column=0, columnspan=8)
+
+        for i in range(0, 8):
+            for j in range(0, 8):
+                if not self.turn:
+                    self.board[i][j].grid(row=8 - i, column=j)
+                else:
+                    self.board[i][j].grid(row=i+1, column=j)
+
+        for i in range(0, 2):
+            self.player_labels[i][2]['text'] = "Score: " + str(self.calculate_score(not bool(i)))
+            self.player_labels[i][3]['text'] = "Relative Score: " + str(self.calculate_score(not bool(i)) - self.calculate_score(bool(i)))
+
         for i in self.kings:
             i['bg'] = i.color
         if self.check_for_check():
             self.kings[int(self.turn)]['bg'] = 'red'
 
-        for i in range(0, 8):
-            for j in range(0, 8):
-                if not self.turn:
-                    self.board[i][j].grid(row=7 - i, column=j)
-                else:
-                    self.board[i][j].grid(row=i, column=j)
+        self.check_for_end()
+
 
     def do_checks(self, coord, s, take):
         if not 0 <= coord[0] <= 7 or not 0 <= coord[1] <= 7:
@@ -284,7 +323,7 @@ class chessBoard(tk.Frame):
                 moves.append(self.board[x + direction][y + 1])
             if self.do_checks((x + direction, y - 1), s, 1):
                 moves.append(self.board[x + direction][y - 1])
-            if self.past_move != [] and self.past_move[0].coord[0] - self.past_move[1].coord[0] in [2, -2] and \
+            if self.past_move != [] and self.past_move[1].piece_info[1] == 'p' and self.past_move[0].coord[0] - self.past_move[1].coord[0] in [2, -2] and \
                     self.past_move[1].coord[1]-square.coord[1] in [-1, 1] and self.past_move[1].coord[0] == square.coord[0]:
                 moves.append(self.board[x + direction][self.past_move[1].coord[1]])
 
@@ -384,7 +423,6 @@ class chessBoard(tk.Frame):
                         return
 
         self.selected_square = None
-        print(self.check_for_check())
         if self.check_for_check():
             self.end_game(not self.turn)
         else:
@@ -396,14 +434,15 @@ class chessBoard(tk.Frame):
                 j.end()
 
         if winner == None:
-            print("stalemate")
+            tk.messagebox.showinfo(title="Game Over!", message="Stalemate!")
         else:
-            print(str(winner) + " won!")
+            tk.messagebox.showinfo(title="Game Over!", message="Congratulations Player " + str(int(self.turn)+1) + " you won!")
 
 
 def chessGrid():
     root = tk.Tk()
     root.title('Chess')
+    root.configure(background='black')
     game = chessBoard(root)
     root.mainloop()
 
