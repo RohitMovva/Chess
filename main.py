@@ -1,8 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox
 import io
-import cairosvg
 import os
+import cairosvg
 from PIL import Image, ImageTk
 
 
@@ -33,6 +33,8 @@ class chessPiece(tk.Button):
         self['image'] = self.image = tk.PhotoImage(width=1, height=1)
         self.piece_info[0] = None
         self.piece_info[1] = None
+        if self.coord == (2, 4):
+            print("piece got removed")
 
     def add_piece(self, piece, piece_info):
         self.has_moved = True
@@ -60,6 +62,16 @@ class chessPiece(tk.Button):
     def unend(self):
         self.bind('<Button-1>', self.onclick)
         self['activebackground'] = "#FCE6CE"
+
+    def become_checked(self):
+        self['bg'] = 'red'
+        if self.coord == (2, 4):
+            print(self['bg'])
+
+    def become_safe(self):
+        self['bg'] = self.color
+        if self.coord == (2, 4):
+            print("became safe???")
 
     def promotion_option(self, image, promoter):
         self.promoter = promoter
@@ -173,6 +185,9 @@ class chessBoard(tk.Frame):
 
     def handle_click(self, square):
         # promote a piece
+        for i in self.kings:
+            print(i.coord)
+        print("\n")
         if square.promoter[0]:
             for i in self.board:
                 for j in i:
@@ -261,10 +276,10 @@ class chessBoard(tk.Frame):
         self.selected_square.remove_piece()
 
     def switch_board(self, square):
-        if square.piece_info[1] == 'k' and square.piece_info[0]:
-            self.kings[0] = square
-        elif square.piece_info[1] == 'k' and not square.piece_info[0]:
-            self.kings[1] = square
+        # if square.piece_info[1] == 'k' and square.piece_info[0]:
+        #     self.kings[0] = square
+        # elif square.piece_info[1] == 'k' and not square.piece_info[0]:
+        #     self.kings[1] = square
         self.turn = not self.turn
         self.selected_square = None
 
@@ -282,10 +297,13 @@ class chessBoard(tk.Frame):
             self.player_labels[i][2]['text'] = "Score: " + str(self.calculate_score(not bool(i)))
             self.player_labels[i][3]['text'] = "Relative Score: " + str(self.calculate_score(not bool(i)) - self.calculate_score(bool(i)))
 
+        temp = self.turn
         for i in self.kings:
-            i['bg'] = i.color
-        if self.check_for_check():
-            self.kings[int(self.turn)]['bg'] = 'red'
+            self.kings[int(self.turn)].become_safe()
+            self.turn = not bool(i)
+            if self.check_for_check():
+                self.kings[int(self.turn)].become_checked()
+        self.turn = temp
 
         self.check_for_end()
 
@@ -439,7 +457,7 @@ class chessBoard(tk.Frame):
             tk.messagebox.showinfo(title="Game Over!", message="Congratulations Player " + str(int(self.turn)+1) + " you won!")
 
 
-def chessGrid():
+def chessGame():
     root = tk.Tk()
     root.title('Chess')
     root.configure(background='black')
@@ -447,4 +465,4 @@ def chessGrid():
     root.mainloop()
 
 
-chessGrid()
+chessGame()
