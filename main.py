@@ -1,8 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox
-import io
 import os
-import cairosvg
 from PIL import Image, ImageTk
 
 
@@ -13,8 +11,9 @@ class chessPiece(tk.Button):
         self.has_piece = False
         self.has_moved = False
         self.promoter = [False, []]
-        if piece != None:
-            tk_image = piece
+        self.highlighted_image = piece[1]
+        if piece[0] != None:
+            tk_image = piece[0]
             self.has_piece = True
 
         tk.Button.__init__(self, master, image=tk_image, height=150, width=150, text='', bg=color,
@@ -27,33 +26,36 @@ class chessPiece(tk.Button):
     def onclick(self, filler):
         self.master.handle_click(self)
 
-    def remove_piece(self):
+    def remove_piece(self, blank_selected):
         self.has_piece = False
-        self['bg'] = self.color
         self['image'] = self.image = tk.PhotoImage(width=1, height=1)
+        self.highlighted_image = blank_selected
         self.piece_info[0] = None
         self.piece_info[1] = None
-        if self.coord == (2, 4):
-            print("piece got removed")
 
-    def add_piece(self, piece, piece_info):
+    def add_piece(self, piece, highlighted_piece, piece_info):
         self.has_moved = True
         self.has_piece = True
+        self.highlighted_image = highlighted_piece
         self['image'] = self.image = piece
         self.piece_info[0] = piece_info[0]
         self.piece_info[1] = piece_info[1]
 
     def highlight(self):
-        self['width'] -= 16
-        self['height'] -= 16
-        # uncomment for buttons to have a different border when selected
-        self['borderwidth'] = 8
+        self['image'] = self.highlighted_image
 
     def unhighlight(self):
-        self['width'] = 150
-        self['height'] = 150
-        # uncomment for buttons to have a different border when selected
-        self['borderwidth'] = 0
+        self['image'] = self.image
+
+    def show(self):
+        if self.color == "#F0D9B5":
+            self['bg'] = self['activebackground'] = "#F7EC59"
+        else:
+            self['bg'] = self['activebackground'] = "#DAC331"
+
+    def unshow(self):
+        self['bg'] = self.color
+        self['activebackground'] = "#FCE6CE"
 
     def end(self):
         self.unbind('<Button-1>')
@@ -65,21 +67,22 @@ class chessPiece(tk.Button):
 
     def become_checked(self):
         self['bg'] = 'red'
-        if self.coord == (2, 4):
-            print(self['bg'])
 
     def become_safe(self):
-        self['bg'] = self.color
-        if self.coord == (2, 4):
-            print("became safe???")
+        if self['bg'] == 'red':
+            self['bg'] = self.color
 
     def promotion_option(self, image, promoter):
         self.promoter = promoter
         self['image'] = image
+        self['bg'] = "#FFFFFF"
+        self['activebackground'] = "#FFFFFF"
 
     def become_normal(self):
         self.promoter = [False, None]
         self['image'] = self.image
+        self['bg'] = self.color
+        self['activebackground'] = "#FFFFFF"
 
 
 class chessBoard(tk.Frame):
@@ -94,21 +97,31 @@ class chessBoard(tk.Frame):
         self.piece_type_dict = {0: 'r', 1: 'n', 2: 'b', 3: 'q', 4: 'k'}
         self.value_dict = {'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9, 'k': 0, None: 0}
         self.promote_to_piece = [[], []]
-        with os.scandir('pieces/') as pieces:
-            for old_piece in pieces:
-                image_data = cairosvg.svg2png(url=cwd + "/pieces/" + old_piece.name)
-                image = Image.open(io.BytesIO(image_data))
-                resized = image.resize((150, 150))
-                piece = ImageTk.PhotoImage(resized, master=master)
+        self.selected_icons = []
+        with os.scandir('assets/icons') as icons:
+            for old_icon in icons:
+                self.selected_icons.append(Image.open(cwd + "/assets/icons/" + old_icon.name).resize((65, 65)))
+
+        self.selected_icons[2].paste(self.selected_icons[1], (0, 0), self.selected_icons[1].convert('RGBA'))
+        self.selected_icons[2] = ImageTk.PhotoImage(self.selected_icons[2], master=master)
+        self.selected_icons[0] = self.selected_icons[0].resize((150, 150))
+        for root, dirs, files in os.walk(cwd + "/assets/pieces/"):
+            dirs.sort()
+            for old_piece in sorted(files):
+                image = Image.open(cwd + "/assets/pieces/" + old_piece).resize((150, 150))
+                piece = ImageTk.PhotoImage(image, master=master)
+                overlayed_image = image
+                overlayed_image.paste(self.selected_icons[0], (0, 0), self.selected_icons[0].convert('RGBA'))
+                highlighted_image = ImageTk.PhotoImage(overlayed_image, master=master)
                 if counter > 1:
                     counter = 0
                     step += 1
-                if old_piece.name == 'Chess_pub45.svg' or old_piece.name == 'Chess_puw45.svg':
-                    pawns.append(piece)
+                if old_piece == 'Chess_pub45.png' or old_piece == 'Chess_puw45.png':
+                    pawns.append((piece, highlighted_image))
                     continue
-                piecemap[(counter * 7, 0 + step)] = piece
-                if "royal" not in old_piece.name:
-                    piecemap[(counter * 7, 7 - step)] = piece
+                piecemap[(counter * 7, 0 + step)] = (piece, highlighted_image)
+                if "royal" not in old_piece:
+                    piecemap[(counter * 7, 7 - step)] = (piece, highlighted_image)
                 if counter == 0 and step < 4:
                     self.promote_to_piece[0].append(piece)
                 elif step < 4:
@@ -128,10 +141,9 @@ class chessBoard(tk.Frame):
             currframe = tk.Frame(master, height=5, width=50)
             self.player_labels[i].append(currframe)
             self.player_labels[i].append(tk.Label(currframe, text=("Player " + str(i+1)), height=5, width=10, bg='black', fg='white'))
-            self.player_labels[i].append(tk.Label(currframe, text="Score: " + str(self.calculate_score(bool(i))), height=5, width=10, bg='black', fg='white'))
+            self.player_labels[i].append(tk.Label(currframe, text="Score: " + str(39-self.calculate_score(not bool(i))), height=5, width=10, bg='black', fg='white'))
             self.player_labels[i].append(tk.Label(currframe, text="Relative Score: " +
                     str(self.calculate_score(bool(i))-self.calculate_score(not bool(i))), height=5, width=20, bg='black', fg='white'))
-            # str(self.calculate_score(bool(i))-self.calculate_score(not bool(i))
         self.player_labels[1][0].grid(row=0, column=0, columnspan=8)
         for i in range(1, len(self.player_labels[0])):
             self.player_labels[1][i].grid(row=0, column=i)
@@ -158,10 +170,13 @@ class chessBoard(tk.Frame):
                     piece_info[0] = False
                     if i > 4:
                         piece_info[0] = True
+                image = piecemap.get((i, j), None)
+                if image == None:
+                    image = [None, self.selected_icons[2]]
                 if (i + j) % 2 == 0:
-                    self.board[i].append(chessPiece(self, "#F0D9B5", (i, j), piecemap.get((i, j), None), piece_info))
+                    self.board[i].append(chessPiece(self, "#F0D9B5", (i, j), image, piece_info))
                 else:
-                    self.board[i].append(chessPiece(self, "#B58863", (i, j), piecemap.get((i, j), None), piece_info))
+                    self.board[i].append(chessPiece(self, "#B58863", (i, j), image, piece_info))
 
                 if piece_info[1] == 'k' and piece_info[0] == True:
                     self.kings.append(self.board[i][j])
@@ -172,7 +187,7 @@ class chessBoard(tk.Frame):
         for i in range(1, len(self.player_labels[0])):
             self.player_labels[0][i].grid(row=0, column=i)
         for i in range(0, len(self.player_labels)):
-            self.player_labels[i][2]['text'] = "Score: " + str(self.calculate_score(bool(i)))
+            self.player_labels[i][2]['text'] = "Score: " + str(39-self.calculate_score(not bool(i)))
             self.player_labels[i][3]['text'] = "Relative Score: " + str(self.calculate_score(bool(i)) - self.calculate_score(not bool(i)))
 
     def calculate_score(self, player):
@@ -185,15 +200,12 @@ class chessBoard(tk.Frame):
 
     def handle_click(self, square):
         # promote a piece
-        for i in self.kings:
-            print(i.coord)
-        print("\n")
         if square.promoter[0]:
             for i in self.board:
                 for j in i:
                     j.unend()
-            self.past_move[1].remove_piece()
-            self.past_move[1].add_piece(square["image"], square.promoter[1])
+            self.past_move[1].remove_piece(self.selected_icons[2])
+            self.past_move[1].add_piece(square["image"], square.highlighted_image, square.promoter[1])
             for i in self.promoting_options:
                 i.become_normal()
             self.promoting_options = []
@@ -203,7 +215,10 @@ class chessBoard(tk.Frame):
         elif square.has_piece and self.turn == square.piece_info[0] and square != self.selected_square:
             for i in self.highlighted_squares:
                 i.unhighlight()
+            if self.selected_square != None:
+                self.selected_square.unshow()
             self.selected_square = square
+            self.selected_square.show()
             self.highlighted_squares = self.generate_moves_for_square(square, square.piece_info, False)
             # deleting pieces before this point
             for i in self.highlighted_squares:
@@ -219,7 +234,11 @@ class chessBoard(tk.Frame):
                 self.castle(square)
             else:
                 self.shift_piece(square, self.selected_square)
+            for i in self.past_move:
+                i.unshow()
             self.past_move = [self.selected_square, square]
+            for i in self.past_move:
+                i.show()
 
             if square.piece_info[1] == 'p' and ((square.piece_info[0] and square.coord[0] == 0) or (
                     not square.piece_info[0] and square.coord[0] == 7)):
@@ -228,12 +247,12 @@ class chessBoard(tk.Frame):
             self.switch_board(square)
 
     def shift_piece(self, p1, p2):
-        temp = [(p1.image, p1.piece_info[:], p1.has_moved), (p2.image, p2.piece_info[:], p2.has_moved)]
+        temp = [(p1.image, p1.highlighted_image, p1.piece_info[:], p1.has_moved), (p2.image, p2.highlighted_image, p2.piece_info[:], p2.has_moved)]
         if p2.piece_info[1] == 'k':
             self.kings[int(p2.piece_info[0])] = p1
-        p1.remove_piece()
-        p2.remove_piece()
-        p1.add_piece(temp[1][0], temp[1][1])
+        p1.remove_piece(self.selected_icons[2])
+        p2.remove_piece(self.selected_icons[2])
+        p1.add_piece(temp[1][0], temp[1][1], temp[1][2])
         return temp
 
     def promote_piece(self, piece, column):
@@ -258,28 +277,24 @@ class chessBoard(tk.Frame):
             square = self.board[square.coord[0]][square.coord[1] + 1]
         else:
             square = self.board[square.coord[0]][square.coord[1] - 1]
-        temp = [(self.kings[self.turn].image, self.kings[self.turn].piece_info[:]),
-                (square.image, square.piece_info[:])]
-        self.kings[self.turn].remove_piece()
-        square.remove_piece()
+        temp = [(self.kings[self.turn].image, self.kings[self.turn].highlighted_image, self.kings[self.turn].piece_info[:]),
+                (square.image, square.highlighted_image, square.piece_info[:])]
+        self.kings[self.turn].remove_piece(self.selected_icons[2])
+        square.remove_piece(self.selected_icons[0])
         switches = [6, 5]
         if square.coord[1] == 0:
             switches[0] = 2
             switches[1] = 3
-        self.board[int(self.turn) * 7][switches[0]].add_piece(temp[0][0], temp[0][1])
-        self.board[int(self.turn) * 7][switches[1]].add_piece(temp[1][0], temp[1][1])
+        self.board[int(self.turn) * 7][switches[0]].add_piece(temp[0][0], temp[0][1], temp[0][2])
+        self.board[int(self.turn) * 7][switches[1]].add_piece(temp[1][0], temp[1][1], temp[1][2])
         self.kings[self.turn] = self.board[int(self.turn) * 7][switches[0]]
 
     def en_passant(self, square):
-        self.past_move[1].remove_piece()
-        square.add_piece(self.selected_square.image, self.selected_square.piece_info[:])
-        self.selected_square.remove_piece()
+        self.past_move[1].remove_piece(self.selected_icons[2])
+        square.add_piece(self.selected_square.image, self.selected_square.highlighted_image, self.selected_square.piece_info[:])
+        self.selected_square.remove_piece(self.selected_icons[2])
 
     def switch_board(self, square):
-        # if square.piece_info[1] == 'k' and square.piece_info[0]:
-        #     self.kings[0] = square
-        # elif square.piece_info[1] == 'k' and not square.piece_info[0]:
-        #     self.kings[1] = square
         self.turn = not self.turn
         self.selected_square = None
 
@@ -294,7 +309,7 @@ class chessBoard(tk.Frame):
                     self.board[i][j].grid(row=i+1, column=j)
 
         for i in range(0, 2):
-            self.player_labels[i][2]['text'] = "Score: " + str(self.calculate_score(not bool(i)))
+            self.player_labels[i][2]['text'] = "Score: " + str(39-self.calculate_score(bool(i)))
             self.player_labels[i][3]['text'] = "Relative Score: " + str(self.calculate_score(not bool(i)) - self.calculate_score(bool(i)))
 
         temp = self.turn
@@ -410,14 +425,14 @@ class chessBoard(tk.Frame):
         return True
 
     def redo(self, temp, square):
-        if temp[1][1][1] == 'k':
-            self.kings[temp[1][1][0]] = self.selected_square
-        self.selected_square.add_piece(temp[1][0], temp[1][1])
-        self.selected_square.has_moved = temp[1][2]
-        square.remove_piece()
-        square.has_moved = temp[0][2]
-        if temp[0][1][0] != None:
-            square.add_piece(temp[0][0], temp[0][1])
+        if temp[1][2][1] == 'k':
+            self.kings[temp[1][2][0]] = self.selected_square
+        self.selected_square.add_piece(temp[1][0], temp[1][1], temp[1][2])
+        self.selected_square.has_moved = temp[1][3]
+        square.remove_piece(self.selected_icons[2])
+        square.has_moved = temp[0][3]
+        if temp[0][2][0] != None:
+            square.add_piece(temp[0][0], temp[0][1], temp[0][2])
 
     def check_for_check(self):
         self.turn = not self.turn
